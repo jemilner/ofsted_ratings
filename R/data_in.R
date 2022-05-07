@@ -3,16 +3,16 @@ library(readr)
 library(tidyr)
 library(DataExplorer)
 
-school_info_file <- "data/england_school_information.csv"
-school_census_file <- "data/england_census.csv"
-school_funding_file <- "data/england_cfr.csv"
-school_workforce_file <- "data/england_swf.csv"
+info_file <- "data/england_school_information.csv"
+census_file <- "data/england_census.csv"
+funding_file <- "data/england_cfr.csv"
+workforce_file <- "data/england_swf.csv"
 
 ########################
 ## school information ##
 ########################
-school_info_tbl <- read_csv(
-    file = school_info_file,
+info_tbl <- read_csv(
+    file = info_file,
     col_types = cols(.default = "c")
 ) %>%
     select(all_of(c(
@@ -38,20 +38,20 @@ school_info_tbl <- read_csv(
 
 #quick data explore 
 # create_report(
-#     data = school_info_tbl,
-#     output_file = "school_info_full.html",
+#     data = info_tbl,
+#     output_file = "info_full.html",
 #     output_dir = paste0(getwd(), "/explore")
 # )
 #any obvious reason for missing ofsted ratings?
 # create_report(
-#     data = school_info_tbl %>%
+#     data = info_tbl %>%
 #         filter(is.na(OFSTEDRATING)),
-#     output_file = "school_info_missing_ofsted.html",
+#     output_file = "info_missing_ofsted.html",
 #     output_dir = paste0(getwd(), "/explore")
 # )
 
 #just going to look at open secondary schools
-secondary_tbl <- school_info_tbl %>%
+secondary_tbl <- info_tbl %>%
     filter(SCHSTATUS == "Open") %>%
     filter(as.integer(AGELOW) == 11) %>%
     filter(as.integer(AGEHIGH) >= 16) %>%
@@ -90,8 +90,8 @@ secondary_tbl %>%
 ## school census ##
 ###################
 #mostly just want percent cols
-school_census_tbl <- read_csv(
-    file = school_census_file,
+census_tbl <- read_csv(
+    file = census_file,
     col_types = cols(.default = "c")
 ) %>%
     select(all_of(c(
@@ -109,7 +109,7 @@ school_census_tbl <- read_csv(
     )))
 
 create_report(
-    data = school_census_tbl,
+    data = census_tbl,
     output_file = "census_full.html",
     output_dir = paste0(getwd(), "/explore")
 )
@@ -118,8 +118,8 @@ create_report(
 ## funding ##
 ############
 #dont want 
-school_funding_tbl <- read_csv(
-    file = school_funding_file,
+funding_tbl <- read_csv(
+    file = funding_file,
     col_types = cols(.default = "c")
 ) %>%
     select(all_of(c(
@@ -160,12 +160,27 @@ school_funding_tbl <- read_csv(
     )))
 
 create_report(
-    data = school_funding_tbl,
+    data = funding_tbl,
     output_file = "funding_full.html",
     output_dir = paste0(getwd(), "/explore")
 )
 
 #FSMBAND completely missing
-school_funding_tbl <- school_funding_tbl %>%
+funding_tbl <- funding_tbl %>%
     select(-FSMBAND)
 
+###############
+## workforce ##
+###############
+#avoid absolute cols
+#e.g., number of teachers as it depends on school size
+workforce_tbl <- read_csv(
+    file = workforce_file,
+    col_types = cols(.default = "c")
+) %>%
+    select(all_of(c(
+        "URN",
+        "LA" = "LA Number",
+        "ESTAB" = "Establishment Number",
+        "PUPILTEACHERRATIO" = "Pupil:     Teacher Ratio"
+    )))
