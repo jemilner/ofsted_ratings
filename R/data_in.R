@@ -114,4 +114,58 @@ create_report(
     output_dir = paste0(getwd(), "/explore")
 )
 
+#############
+## funding ##
+############
+#dont want 
+school_funding_tbl <- read_csv(
+    file = school_funding_file,
+    col_types = cols(.default = "c")
+) %>%
+    select(all_of(c(
+        "URN",
+        "PUPILS",
+        "FSM",
+        "FSMBAND",
+        "GRANTFUNDING",
+        "SELFGENERATEDINCOME",
+        "TOTALINCOME",
+        "TEACHINGSTAFF",
+        "SUPPLYTEACHERS",
+        "EDUCATIONSUPPORTSTAFF",
+        "PREMISES",
+        "BACKOFFICE",
+        "CATERING",
+        "OTHERSTAFF",
+        "ENERGY",
+        "LEARNINGRESOURCES",
+        "ICT",
+        "BOUGHTINPROFESSIONALSERVICES",
+        "OTHER",
+        "TOTALEXPENDITURE",
+        "PGRANTFUNDING",
+        "PSELFGENERATEDINCOME",
+        "PTEACHINGSTAFF",
+        "PSUPPLYTEACHERS",
+        "PEDUCATIONSUPPORTSTAFF",
+        "PPREMISES",
+        "PBACKOFFICE",
+        "PCATERING",
+        "POTHERSTAFF",
+        "PENERGY",
+        "PLEARNINGRESOURCES",
+        "PICT",
+        "PBOUGHTINPROFESSIONALSERVICES",
+        "POTHER"
+    )))
+
+create_report(
+    data = school_funding_tbl,
+    output_file = "funding_full.html",
+    output_dir = paste0(getwd(), "/explore")
+)
+
+#FSMBAND completely missing
+school_funding_tbl <- school_funding_tbl %>%
+    select(-FSMBAND)
 
