@@ -19,10 +19,6 @@ info_tbl <- read_csv(
 ) %>%
     select(all_of(c(
         "URN",
-        "LANAME",
-        "LA",
-        "ESTAB",
-        "POSTCODE",
         "SCHSTATUS",
         "MINORGROUP",
         "SCHOOLTYPE",
@@ -34,26 +30,33 @@ info_tbl <- read_csv(
         "GENDER",
         "RELCHAR",
         "ADMPOL",
-        "OFSTEDRATING",
-        "OFSTEDLASTINSP"
+        "OFSTEDRATING"
     )))
 
 #quick data explore 
-# create_report(
-#     data = info_tbl,
-#     output_file = "info_full.html",
-#     output_dir = paste0(getwd(), "/explore")
-# )
+create_report(
+    data = info_tbl,
+    output_file = "info.html",
+    output_dir = paste0(getwd(), "/explore")
+)
 
 #just going to look at open secondary schools
-#filtered out special schools (they will have a different set of requirements as to what makes a good school)
-#also took out other independent schools (private?) - different profile in the data anyway
 secondary_tbl <- info_tbl %>%
     filter(SCHSTATUS == "Open") %>%
     filter(as.integer(AGELOW) == 11) %>%
     filter(as.integer(AGEHIGH) >= 16) %>%
+    #filtered out special schools
+    #(on the basis they will have a different set of requirements as to what makes a good school)
     filter(MINORGROUP != "Special school") %>%
-    filter(SCHOOLTYPE != "Other independent school") %>%
+    #also took out independent schools (are these private?)
+    #they have different profile in the data anyway
+    #so a stratified analysis might be more useful anyway
+    filter(!grepl("independent", SCHOOLTYPE, ignore.case = TRUE)) %>%
+    filter(!grepl("independent", MINORGROUP, ignore.case = TRUE)) %>%
+    #took out niche school types
+    filter(SCHOOLTYPE != "Service children's education") %>%
+    filter(SCHOOLTYPE != "Studio schools") %>%
+    filter(SCHOOLTYPE != "University technical college") %>%
     select(-c(
         "SCHSTATUS",
         "ISPRIMARY",
@@ -68,7 +71,8 @@ create_report(
     output_file = "secondary_full.html",
     output_dir = paste0(getwd(), "/explore")
 )
-#see if any obvious reason for missing ofsted ratings?
+#see if any systematic reason for missing ofsted ratings
+#(nothing major)
 create_report(
     data = secondary_tbl %>%
         filter(is.na(OFSTEDRATING)),
@@ -76,14 +80,9 @@ create_report(
     output_dir = paste0(getwd(), "/explore")
 )
 
-#nothing major aside from MINORGROUP is a bit different
-secondary_tbl %>%
-    pull(MINORGROUP) %>%
-    table_pec()
-secondary_tbl %>% 
-    filter(is.na(OFSTEDRATING)) %>%
-    pull(MINORGROUP) %>%
-    table_pec()
+#get secondary school ids to filter other data sets
+secondary_ids <- secondary_tbl %>%
+    pull(URN)
 
 ###################
 ## school census ##
@@ -96,23 +95,29 @@ census_tbl <- read_csv(
     select(all_of(c(
         "URN",
         "NOR",
-        "PNORG", #don't need boy equivalent
+        "PNORG", #don't need boy equivalent as well
         "PSENELSE",
         "PSENELK",
         "PNUMENGFL",
         "PNUMFSMEVER"
-    )))
+    ))) %>%
+    filter(URN %in% secondary_ids)
 
-# create_report(
-#     data = census_tbl,
-#     output_file = "census.html",
-#     output_dir = paste0(getwd(), "/explore")
-# )
+#check for missing values
+setNames(
+    unlist(
+        map(
+            names(census_tbl),
+            function(x) sum(is.na(census_tbl %>% pull(x)))
+        )
+    ),
+    names(census_tbl)
+)
 
 #############
 ## funding ##
 ############
-#dont want 
+#not interested in historical columns
 funding_tbl <- read_csv(
     file = funding_file,
     col_types = cols(.default = "c")
@@ -152,36 +157,32 @@ funding_tbl <- read_csv(
         "PICT",
         "PBOUGHTINPROFESSIONALSERVICES",
         "POTHER"
-    )))
+    ))) %>%
+    filter(URN %in% secondary_ids)
 
-create_report(
-    data = funding_tbl,
-    output_file = "funding.html",
-    output_dir = paste0(getwd(), "/explore")
-)
-
-#FSMBAND completely missing
-funding_tbl <- funding_tbl %>%
-    select(-FSMBAND)
-
-#funding_tbl has a duplicate row - remove it
-funding_tbl <- funding_tbl %>%
-    distinct()
+#secondary_ids contains > 3000 ids
+#only ~600 of these are in the funding data
+#so will ignore it all
 
 ###############
 ## workforce ##
 ###############
-#avoid absolute cols
-#e.g., number of teachers as it depends on school size
+#only interested in relative cols
+#but need to bring through some absolute cols to calc them
 workforce_tbl <- read_csv(
     file = workforce_file,
     col_types = cols(.default = "c")
 ) %>%
     select(all_of(c(
         "URN",
-        "PUPILTEACHERRATIO" = "Pupil:     Teacher Ratio"
+        "PUPILTEACHERRATIO" = "Pupil:     Teacher Ratio",
+        "TAFTE" = "Total Number of Teaching Assistants (Full-time Equivalent)",
+        "SUPPORTFTE" = "Total Number of Non Classroom-based School Support Staff, Excluding Auxiliary Staff (Full-Time Equivalent)"
     ))) %>%
-    filter(!is.na(URN))
+    filter(URN %in% secondary_ids) %>%
+    #TODO add these back in later when I've thought about how to handle them
+    #as it stands, they cause a div by 0 error when calculating ratios
+    filter(as.numeric(TAFTE) > 0)
 
 ##########
 ## join ##
@@ -189,10 +190,6 @@ workforce_tbl <- read_csv(
 joined_tbl <- secondary_tbl %>%
     left_join(
         census_tbl,
-        by = c("URN" = "URN")
-    ) %>%
-    left_join(
-        funding_tbl,
         by = c("URN" = "URN")
     ) %>%
     left_join(
@@ -206,55 +203,36 @@ create_report(
     output_dir = paste0(getwd(), "/explore")
 )
 
-joined_tbl <- joined_tbl %>%
-    #most the funding tbl is missing for secondary schools
-    select(-c(
-        "PUPILS",
-        "FSM",
-        "GRANTFUNDING",
-        "SELFGENERATEDINCOME",
-        "TOTALINCOME",
-        "TEACHINGSTAFF",
-        "SUPPLYTEACHERS",
-        "EDUCATIONSUPPORTSTAFF",
-        "PREMISES",
-        "BACKOFFICE",
-        "CATERING",
-        "OTHERSTAFF",
-        "ENERGY",
-        "LEARNINGRESOURCES",
-        "ICT",
-        "BOUGHTINPROFESSIONALSERVICES",
-        "OTHER",
-        "TOTALEXPENDITURE",
-        "PGRANTFUNDING",
-        "PSELFGENERATEDINCOME",
-        "PTEACHINGSTAFF",
-        "PSUPPLYTEACHERS",
-        "PEDUCATIONSUPPORTSTAFF",
-        "PPREMISES",
-        "PBACKOFFICE",
-        "PCATERING",
-        "POTHERSTAFF",
-        "PENERGY",
-        "PLEARNINGRESOURCES",
-        "PICT",
-        "PBOUGHTINPROFESSIONALSERVICES",
-        "POTHER"
-    )) %>%
-    #removes rows without an ofsted rating
-    filter(!is.na(OFSTEDRATING))
-
-create_report(
-    data = joined_tbl,
-    output_file = "joined2.html",
-    output_dir = paste0(getwd(), "/explore")
-)
-
 ####################
 ## data cleansing ##
 ####################
 cleansed_tbl <- joined_tbl %>%
+    #remove NA oftsed ratings
+    filter(!is.na(OFSTEDRATING)) %>%
+    #more staff ratios
+    mutate(PUPILTARATIO = as.integer(NOR) / as.numeric(TAFTE)) %>%
+    mutate(PUPILSUPPORTRATIO = as.integer(NOR) / as.numeric(SUPPORTFTE)) %>%
+    select(-c(TAFTE, SUPPORTFTE)) %>%
+    #reduce gender to mixed or not
+    mutate(MIXED = ifelse(GENDER == "Mixed", 1, 0)) %>%
+    select(-GENDER) %>%
+    #assumption: ADMPOL: 'not applicable' can be wrapped up in 'non-selective'
+    mutate(ADMPOL = case_when(
+        ADMPOL == "Not applicable" ~ "Non-selective",
+        TRUE ~ ADMPOL
+    )) %>%
+    #assumption: RELCHAR: 'does not apply' can be wrapped up in 'none'
+    mutate(RELCHAR = case_when(
+        RELCHAR == "Does not apply" ~ "None",
+        TRUE ~ RELCHAR
+    )) %>%
+    #make RELCHAR binary
+    mutate(RELCHAR = case_when(
+        RELCHAR == "None" ~ "No",
+        is.na(RELCHAR) ~ as.character(NA),
+        TRUE ~ "Yes"
+    )) %>%
+    #column formatting
     mutate(ISPOST16 = as.integer(ISPOST16)) %>%
     mutate(NOR = as.integer(NOR)) %>%
     mutate(PNORG = as.numeric(str_replace(PNORG, "%", ""))) %>%
@@ -263,17 +241,11 @@ cleansed_tbl <- joined_tbl %>%
     mutate(PNUMENGFL = as.numeric(str_replace(PNUMENGFL, "%", ""))) %>%
     mutate(PNUMFSMEVER = as.numeric(str_replace(PNUMFSMEVER, "%", ""))) %>%
     mutate(PUPILTEACHERRATIO = as.numeric(PUPILTEACHERRATIO)) %>%
-    mutate(LANAME = as.factor(LANAME)) %>%
     mutate(MINORGROUP = as.factor(MINORGROUP)) %>%
     mutate(SCHOOLTYPE = as.factor(SCHOOLTYPE)) %>%
-    mutate(GENDER = as.factor(GENDER)) %>%
     mutate(RELCHAR = as.factor(RELCHAR)) %>%
     mutate(ADMPOL = as.factor(ADMPOL)) %>%
-    mutate(outstanding = ifelse(OFSTEDRATING == "Outstanding", 1, 0)) %>%
-    mutate(good = ifelse(OFSTEDRATING == "Good", 1, 0)) %>%
-    mutate(req_improve = ifelse(OFSTEDRATING == "Requires improvement", 1, 0)) %>%
-    mutate(serious_weakness = ifelse(OFSTEDRATING == "Serious Weaknesses", 1, 0)) %>%
-    mutate(special_measures = ifelse(OFSTEDRATING == "Special Measures", 1, 0))
+    mutate(OUTSTANDING = ifelse(OFSTEDRATING == "Outstanding", 1, 0))
 
 create_report(
     data = cleansed_tbl,
@@ -284,6 +256,15 @@ create_report(
 ################
 ## imputation ##
 ################
+#most missing col is ADMPOL
+#doesn't seem to be systematic missingness
+create_report(
+    data = cleansed_tbl %>%
+        filter(is.na(ADMPOL)),
+    output_file = "admpol_missing.html",
+    output_dir = paste0(getwd(), "/explore")
+)
+
 #setup mice model vector
 #default to pmm
 multi_imp_method <- setNames(
@@ -294,12 +275,8 @@ multi_imp_method <- setNames(
 #ignore
 ignore_vars <- c(
     "URN",
-    "LANAME",
-    "LA",
-    "ESTAB",
-    "POSTCODE",
-    "OFSTEDRATING",
-    "OFSTEDLASTINSP"
+    "OUTSTANDING",
+    "OFSTEDRATING"
 )
 #unordered categorical variables
 polyreg_vars <- c("RELCHAR", "ADMPOL")
