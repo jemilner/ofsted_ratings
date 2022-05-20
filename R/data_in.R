@@ -2,6 +2,7 @@ library(dplyr)
 library(readr)
 library(tidyr)
 library(stringr)
+library(purrr)
 library(DataExplorer)
 library(mice)
 
@@ -95,7 +96,6 @@ census_tbl <- read_csv(
     select(all_of(c(
         "URN",
         "NOR",
-        "PNORG", #don't need boy equivalent as well
         "PSENELSE",
         "PSENELK",
         "PNUMENGFL",
@@ -217,35 +217,41 @@ cleansed_tbl <- joined_tbl %>%
     mutate(MIXED = ifelse(GENDER == "Mixed", 1, 0)) %>%
     select(-GENDER) %>%
     #assumption: ADMPOL: 'not applicable' can be wrapped up in 'non-selective'
-    mutate(ADMPOL = case_when(
-        ADMPOL == "Not applicable" ~ "Non-selective",
-        TRUE ~ ADMPOL
+    mutate(ADMPOL_SELECTIVE = case_when(
+        ADMPOL == "Not applicable" ~ 0,
+        ADMPOL == "Non-selective" ~ 0,
+        is.na(ADMPOL) ~ as.numeric(NA),
+        TRUE ~ 1
     )) %>%
+    select(-ADMPOL) %>%
     #assumption: RELCHAR: 'does not apply' can be wrapped up in 'none'
-    mutate(RELCHAR = case_when(
-        RELCHAR == "Does not apply" ~ "None",
-        TRUE ~ RELCHAR
+    mutate(RELCHAR_YES = case_when(
+        RELCHAR == "Does not apply" ~ 0,
+        RELCHAR == "None" ~ 0,
+        is.na(RELCHAR) ~ as.numeric(NA),
+        TRUE ~ 1
     )) %>%
-    #make RELCHAR binary
-    mutate(RELCHAR = case_when(
-        RELCHAR == "None" ~ "No",
-        is.na(RELCHAR) ~ as.character(NA),
-        TRUE ~ "Yes"
+    select(-RELCHAR) %>%
+    #make minorgroup binary
+    mutate(MINORGROUP_ACADEMY = case_when(
+        MINORGROUP == "Academy" ~ 1,
+        TRUE ~ 0
     )) %>%
+    select(-MINORGROUP) %>%
     #column formatting
     mutate(ISPOST16 = as.integer(ISPOST16)) %>%
     mutate(NOR = as.integer(NOR)) %>%
-    mutate(PNORG = as.numeric(str_replace(PNORG, "%", ""))) %>%
     mutate(PSENELSE = as.numeric(str_replace(PSENELSE, "%", ""))) %>%
     mutate(PSENELK = as.numeric(str_replace(PSENELK, "%", ""))) %>%
     mutate(PNUMENGFL = as.numeric(str_replace(PNUMENGFL, "%", ""))) %>%
     mutate(PNUMFSMEVER = as.numeric(str_replace(PNUMFSMEVER, "%", ""))) %>%
     mutate(PUPILTEACHERRATIO = as.numeric(PUPILTEACHERRATIO)) %>%
-    mutate(MINORGROUP = as.factor(MINORGROUP)) %>%
+    #reduce outliers effects
+    mutate(PUPILTARATIOLOG = log10(PUPILTARATIO)) %>%
+    mutate(PUPILSUPPORTRATIOLOG = log10(PUPILSUPPORTRATIO)) %>%
     mutate(SCHOOLTYPE = as.factor(SCHOOLTYPE)) %>%
-    mutate(RELCHAR = as.factor(RELCHAR)) %>%
-    mutate(ADMPOL = as.factor(ADMPOL)) %>%
-    mutate(OUTSTANDING = ifelse(OFSTEDRATING == "Outstanding", 1, 0))
+    mutate(OUTSTANDING = ifelse(OFSTEDRATING == "Outstanding", 1, 0)) %>%
+    select(-OFSTEDRATING)
 
 create_report(
     data = cleansed_tbl,
@@ -256,15 +262,6 @@ create_report(
 ################
 ## imputation ##
 ################
-#most missing col is ADMPOL
-#doesn't seem to be systematic missingness
-create_report(
-    data = cleansed_tbl %>%
-        filter(is.na(ADMPOL)),
-    output_file = "admpol_missing.html",
-    output_dir = paste0(getwd(), "/explore")
-)
-
 #setup mice model vector
 #default to pmm
 multi_imp_method <- setNames(
@@ -275,14 +272,13 @@ multi_imp_method <- setNames(
 #ignore
 ignore_vars <- c(
     "URN",
-    "OUTSTANDING",
-    "OFSTEDRATING"
+    "OUTSTANDING"
 )
 #unordered categorical variables
-polyreg_vars <- c("RELCHAR", "ADMPOL")
+# polyreg_vars <- c("RELCHAR_YES", "ADMPOL_SELECTIVE")
 
 multi_imp_method[ignore_vars] <- ""
-multi_imp_method[polyreg_vars] <- "polyreg"
+# multi_imp_method[polyreg_vars] <- "polyreg"
 
 #setup mice matrix
 multi_imp_mat <- diag(
